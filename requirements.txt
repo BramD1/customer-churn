@@ -1,6 +1,10 @@
 pandas
+lightgbm
 numpy
+seaborn
+matplotlib
 scikit-learn
+statsmodels
 mlflow
 fastapi
 uvicorn
@@ -9,3 +13,4 @@ python-dotenv
 joblib
 great-expectations
 pytest
+xgboost
