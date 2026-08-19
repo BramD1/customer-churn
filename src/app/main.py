@@ -43,6 +43,7 @@ class CustomerData(BaseModel):
     """
     # Demographics
     gender: str                # "Male" or "Female"
+    SeniorCitizen: str         # "Yes" or "No" - senior citizen
     Partner: str               # "Yes" or "No" - has partner
     Dependents: str            # "Yes" or "No" - has dependents
     
@@ -98,24 +99,25 @@ def get_prediction(data: CustomerData):
 
 # === GRADIO WEB INTERFACE ===
 def gradio_interface(
-    gender, Partner, Dependents, PhoneService, MultipleLines,
+    gender, SeniorCitizen, Partner, Dependents, PhoneService, MultipleLines,
     InternetService, OnlineSecurity, OnlineBackup, DeviceProtection,
     TechSupport, StreamingTV, StreamingMovies, Contract,
     PaperlessBilling, PaymentMethod, tenure, MonthlyCharges, TotalCharges
 ):
     """
     Gradio interface function that processes form inputs and returns prediction.
-    
+
     This function:
     1. Takes individual form inputs from Gradio UI
     2. Constructs the data dictionary matching the API schema
     3. Calls the same inference pipeline used by the API
     4. Returns user-friendly prediction string
-    
+
     """
     # Construct data dictionary matching CustomerData schema
     data = {
         "gender": gender,
+        "SeniorCitizen": SeniorCitizen,
         "Partner": Partner,
         "Dependents": Dependents,
         "PhoneService": PhoneService,
@@ -146,6 +148,7 @@ demo = gr.Interface(
     inputs=[
         # Demographics section
         gr.Dropdown(["Male", "Female"], label="Gender", value="Male"),
+        gr.Dropdown(["Yes", "No"], label="Senior Citizen", value="No"),
         gr.Dropdown(["Yes", "No"], label="Partner", value="No"),
         gr.Dropdown(["Yes", "No"], label="Dependents", value="No"),
         
@@ -188,11 +191,11 @@ demo = gr.Interface(
     """,
     examples=[
         # High churn risk example
-        ["Female", "No", "No", "Yes", "No", "Fiber optic", "No", "No", "No", 
-         "No", "Yes", "Yes", "Month-to-month", "Yes", "Electronic check", 
+        ["Female", "No", "No", "No", "Yes", "No", "Fiber optic", "No", "No", "No",
+         "No", "Yes", "Yes", "Month-to-month", "Yes", "Electronic check",
          1, 85.0, 85.0],
-        # Low churn risk example  
-        ["Male", "Yes", "Yes", "Yes", "Yes", "DSL", "Yes", "Yes", "Yes",
+        # Low churn risk example
+        ["Male", "No", "Yes", "Yes", "Yes", "Yes", "DSL", "Yes", "Yes", "Yes",
          "Yes", "No", "No", "Two year", "No", "Credit card (automatic)",
          60, 45.0, 2700.0]
     ],

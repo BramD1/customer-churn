@@ -1,0 +1,14 @@
+# Minimal, pinned dependencies for the FastAPI + Gradio serving container.
+# Versions match what the bundled model in src/serving/model/ was logged with
+# (see src/serving/model/requirements.txt) to avoid mlflow load failures.
+fastapi==0.115.0
+pydantic==2.8.2
+uvicorn==0.30.5
+gunicorn==22.0.0
+gradio==4.44.1
+huggingface_hub==0.25.2
+mlflow==3.15.1
+xgboost==3.2.0
+pandas==2.3.3
+numpy==2.4.6
+scikit-learn==1.9.0

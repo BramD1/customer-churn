@@ -1,3 +1,5 @@
+import tempfile
+import os
 import mlflow
 import pandas as pd
 import mlflow.xgboost
@@ -42,6 +44,15 @@ def train_model(df: pd.DataFrame, target_col: str):
         mlflow.log_metric("accuracy", acc)
         mlflow.log_metric("recall", rec)
         mlflow.xgboost.log_model(model, "model")
+
+        # Log the exact training feature order alongside the model artifact.
+        # Serving reads this file to align incoming requests with what the
+        # model expects (see src/serving/inference.py).
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            feature_file = os.path.join(tmp_dir, "feature_columns.txt")
+            with open(feature_file, "w") as f:
+                f.write("\n".join(X.columns))
+            mlflow.log_artifact(feature_file, artifact_path="model")
 
         # 🔑 Log dataset so it shows in MLflow UI
         train_ds = mlflow.data.from_pandas(df, source="training_data")

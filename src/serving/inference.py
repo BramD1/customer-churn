@@ -24,15 +24,21 @@ Production Deployment:
 - Optimized for single-row inference (real-time serving)
 """
 
+import sys
 import os
 import pandas as pd
 import mlflow
 
+# Windows consoles default to cp1252, which can't encode the emoji in the
+# log lines below and would crash the exception handler that needs to run.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 # === MODEL LOADING CONFIGURATION ===
-# IMPORTANT: This path is set during Docker container build
-# In development: uses local MLflow artifacts
-# In production: uses model copied to container at build time
-MODEL_DIR = "/app/model"
+# Relative to the process's working directory, which is the repo root both
+# locally (`uvicorn src.app.main:app` run from the repo root) and in the
+# Docker image (WORKDIR /app, with src/ copied in beneath it).
+MODEL_DIR = os.environ.get("MODEL_DIR", os.path.join("src", "serving", "model"))
 
 try:
     # Load the trained XGBoost model in MLflow pyfunc format
@@ -44,8 +50,9 @@ except Exception as e:
     # Fallback for local development (OPTIONAL)
     try:
         # Try loading from local MLflow tracking
+        # MLflow 3.x layout: mlruns/<experiment_id>/models/<model_id>/artifacts
         import glob
-        local_model_paths = glob.glob("./mlruns/*/*/artifacts/model")
+        local_model_paths = glob.glob("./mlruns/*/models/*/artifacts")
         if local_model_paths:
             latest_model = max(local_model_paths, key=os.path.getmtime)
             model = mlflow.pyfunc.load_model(latest_model)
@@ -74,14 +81,22 @@ except Exception as e:
 # Deterministic binary feature mappings (consistent with training)
 BINARY_MAP = {
     "gender": {"Female": 0, "Male": 1},           # Demographics
+    "SeniorCitizen": {"No": 0, "Yes": 1},         # Senior citizen flag
     "Partner": {"No": 0, "Yes": 1},               # Has partner
-    "Dependents": {"No": 0, "Yes": 1},            # Has dependents  
+    "Dependents": {"No": 0, "Yes": 1},            # Has dependents
     "PhoneService": {"No": 0, "Yes": 1},          # Phone service
     "PaperlessBilling": {"No": 0, "Yes": 1},      # Billing preference
 }
 
 # Numeric columns that need type coercion
 NUMERIC_COLS = ["tenure", "MonthlyCharges", "TotalCharges"]
+
+# Columns whose "No internet/phone service" category collapses into "No"
+# before encoding, matching how the training data was engineered
+INTERNET_DEPENDENT_COLS = [
+    "OnlineSecurity", "OnlineBackup", "DeviceProtection",
+    "TechSupport", "StreamingTV", "StreamingMovies",
+]
 
 def _serve_transform(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -120,6 +135,23 @@ def _serve_transform(df: pd.DataFrame) -> pd.DataFrame:
             # Fill NaN with 0 (same as training preprocessing)
             df[c] = df[c].fillna(0)
     
+    # === STEP 1b: Engineered Flags (must match training feature set) ===
+    # The trained model has two synthetic indicator columns instead of
+    # per-column "No internet/phone service" dummies. Derive them here,
+    # then collapse those categories down to "No" before one-hot encoding.
+    df["No_Internet_Service"] = 0
+    if "InternetService" in df.columns:
+        df["No_Internet_Service"] = (df["InternetService"] == "No").astype(int)
+
+    df["No_phone_service"] = 0
+    if "MultipleLines" in df.columns:
+        df["No_phone_service"] = (df["MultipleLines"] == "No phone service").astype(int)
+        df["MultipleLines"] = df["MultipleLines"].replace("No phone service", "No")
+
+    for c in INTERNET_DEPENDENT_COLS:
+        if c in df.columns:
+            df[c] = df[c].replace("No internet service", "No")
+
     # === STEP 2: Binary Feature Encoding ===
     # Apply deterministic mappings for binary features
     # CRITICAL: Must use exact same mappings as training
@@ -134,7 +166,7 @@ def _serve_transform(df: pd.DataFrame) -> pd.DataFrame:
                 .fillna(0)                      # Fill unknown values with 0
                 .astype(int)                    # Final integer conversion
             )
-    
+
     # === STEP 3: One-Hot Encoding for Remaining Categorical Features ===
     # Find remaining object/categorical columns (not in BINARY_MAP)
     obj_cols = [c for c in df.select_dtypes(include=["object"]).columns]
